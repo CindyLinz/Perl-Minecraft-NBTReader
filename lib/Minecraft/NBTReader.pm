@@ -7,7 +7,7 @@ use warnings;
 require Exporter;
 
 our @ISA = qw(Exporter);
-our $VERSION = '0.6';
+our $VERSION = '0.7';
 
 use Config;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
@@ -149,6 +149,18 @@ sub parseFile {
             my %tmp;
             $self->parseFile($fh, \%tmp);
             $data->{$name} = \%tmp;
+        } elsif($type == 11) {
+            # TAG_Int_Array
+            my $name = $self->readTagName($fh);
+            my $count = $self->readInt($fh);
+            my @vals = map { $self->readInt($fh) } 1..$count;
+            $data->{$name} = \@vals;
+        } elsif($type == 12) {
+            # TAG_Long_Array
+            my $name = $self->readTagName($fh);
+            my $count = $self->readInt($fh);
+            my @vals = map { $self->readLong($fh) } 1..$count;
+            $data->{$name} = \@vals;
         } else {
             die("Unknown type $type");
         }
@@ -172,7 +184,7 @@ sub getNextPseudoName {
 sub readTagName {
     my ($self, $fh) = @_;
     
-    my $len = $self->readStringLength($fh, 1);
+    my $len = $self->readStringLength($fh);
     
     if(!$len) {
         return $self->getNextPseudoName();
@@ -184,11 +196,7 @@ sub readTagName {
 }
 
 sub readStringLength {
-    my ($self, $fh, $allowzerolength) = @_;
-    
-    if(!defined($allowzerolength)) {
-        $allowzerolength = 0;
-    }
+    my ($self, $fh) = @_;
     
     my $buf;
     read($fh, $buf, 2) or die($!);
@@ -199,8 +207,6 @@ sub readStringLength {
     } else {
         $len = unpack('S', $buf);
     }
-    
-    die("The Fuck?") if(!$allowzerolength && !$len);
     
     return $len;
 }
@@ -321,10 +327,10 @@ sub readDouble {
 sub readString {
     my ($self, $fh) = @_;
     
-    my $val;
-    my $len = $self->readStringLength($fh);
-    
-    read($fh, $val, $len) or die($!);
+    my $val = '';
+    if( my $len = $self->readStringLength($fh) ) {
+        read($fh, $val, $len) or die($!);
+    }
     
     return $val;
 }
@@ -373,13 +379,18 @@ None by default.
 
 =head1 SEE ALSO
 
-This is based on the original description of the file format by Notch: 
+This is originally based on the original description of the file format by Notch: 
 L<http://web.archive.org/web/20110723210920/http://www.minecraft.net/docs/NBT.txt>. 
+And the newer extended format is based on L<https://minecraft.gamepedia.com/NBT_format>. 
 This distribution also contains the original test files provided by Notch for the automated test scripts.
 
 =head1 AUTHOR
 
 Rene Schickbauer, E<lt>cavac@cpan.orgE<gt>
+
+=head1 CONTRIBUTER
+
+Cindy Wang (CindyLinz), E<lt>cindy@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 
