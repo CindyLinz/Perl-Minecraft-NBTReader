@@ -20,27 +20,27 @@ our @EXPORT = qw();
 sub new {
     my ($class) = @_;
     my $self = bless {}, $class;
-    
+
     if($Config{byteorder} =~ /^1/) {
         $self->{needswap} = 1;
     } else {
         $self->{needswap} = 0;
     }
-    
+
     return $self;
 }
 
 sub readFile {
     my ($self, $filename) = @_;
-    
+
     $self->{unnamedcount} = 0;
-    
+
     my %data;
-    
+
     my $filetype = $self->checkFileType($filename);
-    
+
     my $newfname = $filename;
-    
+
     if($filetype eq 'gzip') {
         $newfname = 'temp.dat';
         $self->DeZip($filename, $newfname);
@@ -49,58 +49,58 @@ sub readFile {
     } elsif($filetype eq 'plain') {
         print "File looks like an NBT file\n";
     }
-    
+
     open(my $ifh, '<', $newfname) or die($!);
     binmode($ifh);
-    
+
     $self->parseFile(\*$ifh, \%data);
-    
+
     close $ifh;
-    
+
     if($filename ne $newfname) {
         unlink $newfname;
     }
-    
+
     return %data;
 }
 
 sub checkFileType {
     my ($self, $filename) = @_;
-    
+
     open(my $ifh, '<', $filename) or die($!);
     my $buf;
     read($ifh, $buf, 1) or die($!);
     my $type = ord($buf);
     close $ifh;
-    
+
     if($type == 10) {
         return 'plain';
     } elsif($type == 31) {
         return 'gzip';
     }
-    
+
     return 'unknown';
 }
 
 sub DeZip {
     my ($self, $fname, $newfname) = @_;
-    
+
     unlink $newfname;
-    
+
     gunzip $fname => $newfname;
-    
+
     if(!-f $newfname || $self->checkFileType($newfname) ne 'plain') {
         die("Gunzip failed!");
     }
-    
+
     return;
 }
 
 sub parseFile {
     my ($self, $fh, $data) = @_;
-    
+
     while(!eof($fh)) {
-        my $buf;    
+        my $buf;
         read($fh, $buf, 1) or die($!);
         my $type = ord($buf);
         if($type == 0) {
@@ -109,40 +109,31 @@ sub parseFile {
         } elsif(($type >= 1 && $type <= 6) || $type == 8) {
             # TAG_byte, TAG_Short, TAG_Int, TAG_Long, TAG_Float, TAG_Double, TAG_String
             my $name = $self->readTagName($fh);
-            my $val = $self->readValByType($fh, $type);
-            $data->{$name} = $val;
+            $data->{$name} = $self->readValByType($fh, $type);
         } elsif($type == 7) {
             # TAG_Byte_Array
             my $name = $self->readTagName($fh);
             my $count = $self->readInt($fh);
-            my @vals;
-            for(my $i = 0; $i < $count; $i++) {
-                my $val = $self->readByte($fh);
-                push @vals, $val;
-            }
-            $data->{$name} = \@vals;
+            $data->{$name} = [ map { $self->readByte($fh) } 1..$count ];
         } elsif($type == 9) {
             # TAG_List
             my $name = $self->readTagName($fh);
             read($fh, $buf, 1) or die($!);
             my $listtype = ord($buf);
             my $count = $self->readInt($fh);
-            my @vals;
-            for(my $i = 0; $i < $count; $i++) {
+            $data->{$name} = [ map {
                 if(($listtype >= 1 && $listtype <= 6) || $listtype == 8) {
                     # simmple data types
-                    my $val = $self->readValByType($fh, $listtype);
-                    push @vals, $val;
+                    $self->readValByType($fh, $listtype);
                 } elsif($listtype == 10) {
                     # unnamed compound
                     my %subdata;
                     $self->parseFile($fh, \%subdata);
-                    push @vals, \%subdata;
+                    \%subdata;
                 } else {
                     die("Unsupported type $listtype for TAG_List");
                 }
-            }
-            $data->{$name} = \@vals;
+            } 1..$count ];
         } elsif($type == 10) {
             # TAG_compound
             my $name = $self->readTagName($fh);
@@ -153,27 +144,25 @@ sub parseFile {
             # TAG_Int_Array
             my $name = $self->readTagName($fh);
             my $count = $self->readInt($fh);
-            my @vals = map { $self->readInt($fh) } 1..$count;
-            $data->{$name} = \@vals;
+            $data->{$name} = [ map { $self->readInt($fh) } 1..$count ];
         } elsif($type == 12) {
             # TAG_Long_Array
             my $name = $self->readTagName($fh);
             my $count = $self->readInt($fh);
-            my @vals = map { $self->readLong($fh) } 1..$count;
-            $data->{$name} = \@vals;
+            $data->{$name} = [ map { $self->readLong($fh) } 1..$count ];
         } else {
             die("Unknown type $type");
         }
     }
-    
+
     return;
 }
 
 sub getNextPseudoName {
     my ($self) = @_;
-    
+
     $self->{unnamedcount}++;
-    
+
     my $val = '' . $self->{unnamedcount};
     while(length($val) < 7) {
         $val = '0' . $val;
@@ -183,37 +172,37 @@ sub getNextPseudoName {
 
 sub readTagName {
     my ($self, $fh) = @_;
-    
+
     my $len = $self->readStringLength($fh);
-    
+
     if(!$len) {
         return $self->getNextPseudoName();
     }
-    
+
     my $name;
     read($fh, $name, $len) or die($!);
-    return $name; 
+    return $name;
 }
 
 sub readStringLength {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 2) or die($!);
-    
+
     my $len;
     if($self->{needswap}) {
         $len = unpack('S>', $buf);
     } else {
         $len = unpack('S', $buf);
     }
-    
+
     return $len;
 }
 
 sub readValByType {
     my ($self, $fh, $type) = @_;
-    
+
     if($type == 1) {
         return $self->readByte($fh);
     } elsif($type == 2) {
@@ -221,117 +210,117 @@ sub readValByType {
     } elsif($type == 3) {
         return $self->readInt($fh);
     } elsif($type == 4) {
-        return $self->readLong($fh);    
+        return $self->readLong($fh);
     } elsif($type == 5) {
-        return $self->readFloat($fh);    
+        return $self->readFloat($fh);
     } elsif($type == 6) {
         return $self->readDouble($fh);
     } elsif($type == 8) {
         return $self->readString($fh);
     }
-    
+
     return;
 }
 
 sub readByte {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 1) or die($!);
-    
+
     my $val = unpack('c', $buf);
-    
+
     return $val;
 }
 
 sub readShort {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 2) or die($!);
-    
+
     my $val;
     if($self->{needswap}) {
         $val = unpack('s>', $buf);
     } else {
         $val = unpack('s', $buf);
     }
-    
+
     return $val;
 }
 
 sub readInt {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 4) or die($!);
-    
+
     my $val;
     if($self->{needswap}) {
         $val = unpack('l>', $buf);
     } else {
         $val = unpack('l', $buf);
     }
-    
+
     return $val;
 }
 
 sub readLong {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 8) or die($!);
-    
+
     my $val;
     if($self->{needswap}) {
         $val = unpack('q>', $buf);
     } else {
         $val = unpack('q', $buf);
     }
-    
+
     return $val;
 }
 
 sub readFloat {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 4) or die($!);
-    
+
     my $val;
     if($self->{needswap}) {
         $val = unpack('f>', $buf);
     } else {
         $val = unpack('f', $buf);
     }
-    
+
     return $val;
 }
 
 sub readDouble {
     my ($self, $fh) = @_;
-    
+
     my $buf;
     read($fh, $buf, 8) or die($!);
-    
+
     my $val;
     if($self->{needswap}) {
         $val = unpack('d>', $buf);
     } else {
         $val = unpack('d', $buf);
     }
-    
+
     return $val;
 }
 
 sub readString {
     my ($self, $fh) = @_;
-    
+
     my $val = '';
     if( my $len = $self->readStringLength($fh) ) {
         read($fh, $val, $len) or die($!);
     }
-    
+
     return $val;
 }
 
