@@ -7,7 +7,7 @@ use warnings;
 require Exporter;
 
 our @ISA = qw(Exporter);
-our $VERSION = '0.7';
+our $VERSION = '0.8';
 
 use Config;
 use IO::Uncompress::Gunzip qw(gunzip $GunzipError);
@@ -130,6 +130,14 @@ sub parseFile {
                     my %subdata;
                     $self->parseFile($fh, \%subdata);
                     \%subdata;
+                } elsif($listtype == 11) {
+                    # unnamed int array
+                    my $count = $self->readInt($fh);
+                    [ map { $self->readInt($fh) } 1..$count ];
+                } elsif($listtype == 12) {
+                    # unnamed long array
+                    my $count = $self->readInt($fh);
+                    [ map { $self->readLong($fh) } 1..$count ];
                 } else {
                     die("Unsupported type $listtype for TAG_List");
                 }
