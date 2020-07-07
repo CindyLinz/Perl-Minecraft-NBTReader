@@ -46,8 +46,8 @@ sub readFile {
         $self->DeZip($filename, $newfname);
     } elsif($filetype eq 'unknown') {
         die("File is of unknown type");
-    } elsif($filetype eq 'plain') {
-        print "File looks like an NBT file\n";
+#    } elsif($filetype eq 'plain') {
+#        print "File looks like an NBT file\n";
     }
 
     open(my $ifh, '<', $newfname) or die($!);
