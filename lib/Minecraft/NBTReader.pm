@@ -118,30 +118,7 @@ sub parseFile {
         } elsif($type == 9) {
             # TAG_List
             my $name = $self->readTagName($fh);
-            read($fh, $buf, 1) or die($!);
-            my $listtype = ord($buf);
-            my $count = $self->readInt($fh);
-            $data->{$name} = [ map {
-                if(($listtype >= 1 && $listtype <= 6) || $listtype == 8) {
-                    # simmple data types
-                    $self->readValByType($fh, $listtype);
-                } elsif($listtype == 10) {
-                    # unnamed compound
-                    my %subdata;
-                    $self->parseFile($fh, \%subdata);
-                    \%subdata;
-                } elsif($listtype == 11) {
-                    # unnamed int array
-                    my $count = $self->readInt($fh);
-                    [ map { $self->readInt($fh) } 1..$count ];
-                } elsif($listtype == 12) {
-                    # unnamed long array
-                    my $count = $self->readInt($fh);
-                    [ map { $self->readLong($fh) } 1..$count ];
-                } else {
-                    die("Unsupported type $listtype for TAG_List");
-                }
-            } 1..$count ];
+            $data->{$name} = $self->readList($fh);
         } elsif($type == 10) {
             # TAG_compound
             my $name = $self->readTagName($fh);
@@ -330,6 +307,39 @@ sub readString {
     }
 
     return $val;
+}
+
+sub readList {
+    my ($self, $fh) = @_;
+
+    my $buf;
+    read($fh, $buf, 1) or die($!);
+    my $listtype = ord($buf);
+    my $count = $self->readInt($fh);
+
+    [ map {
+        if(($listtype >= 1 && $listtype <= 6) || $listtype == 8) {
+            # simmple data types
+            $self->readValByType($fh, $listtype);
+        } elsif($listtype == 9) {
+            $self->readList($fh);
+        } elsif($listtype == 10) {
+            # unnamed compound
+            my %subdata;
+            $self->parseFile($fh, \%subdata);
+            \%subdata;
+        } elsif($listtype == 11) {
+            # unnamed int array
+            my $count = $self->readInt($fh);
+            [ map { $self->readInt($fh) } 1..$count ];
+        } elsif($listtype == 12) {
+            # unnamed long array
+            my $count = $self->readInt($fh);
+            [ map { $self->readLong($fh) } 1..$count ];
+        } else {
+            die("Unsupported type $listtype for TAG_List");
+        }
+    } 1..$count ];
 }
 
 1;

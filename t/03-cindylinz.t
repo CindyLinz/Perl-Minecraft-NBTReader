@@ -28,28 +28,19 @@ if(!$sixtyfourbit) {
     exit;
 }
 
-ok(-f 't/CindyLinz.dat', 'Found CindyLinz.dat');
-if(!-f 't/CindyLinz.dat') {
-    done_testing();
-    exit(0);
-}
-
 my $reader = Minecraft::NBTReader->new();
 ok(defined($reader), "new()");
 
-my $evalok = 0;
-my %data;
-eval {
-    %data = $reader->readFile('t/CindyLinz.dat');
-    $evalok = 1;
-};
+for my $name (qw(CindyLinz jyanwei)) {
+    ok(-f "t/$name.dat", "Found $name.dat");
 
-ok($evalok, 'Load file without crashing');
-if(!$evalok) {
-    done_testing();
-    exit;
+    my %data = $reader->readFile("t/$name.dat");
+    ok(1, "Load file $name.dat without crashing");
+
+    if( $name eq 'CindyLinz' ) {
+        cmp_ok(int $data{unnamed_0000001}{Pos}[2], '==', 336, 'Read correct');
+    }
 }
 
-cmp_ok(int $data{unnamed_0000001}{Pos}[2], '==', 336, 'Read correct');
 
 done_testing();
